@@ -1,0 +1,14 @@
+{
+  "dependencies": [
+    "langchain",
+    "langchain-openai",
+    "langchain-community",
+    "langgraph",
+    "langgraph-prebuilt",
+    "langgraph-sdk"
+  ],
+  "graphs": {
+    "recruiting_assistant": "agent:graph",
+    "recruiting_assistant_from_clarification": "agent:clarification_graph"
+  }
+}

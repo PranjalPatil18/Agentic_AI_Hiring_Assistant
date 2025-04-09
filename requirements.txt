@@ -1,0 +1,16 @@
+streamlit
+langchain
+langchain-community
+langchain-core
+langchain-openai
+langgraph
+serpapi
+langgraph-cli[inmem]
+langgraph-prebuilt
+langgraph-sdk
+langgraph-checkpoint-sqlite
+langsmith
+pydantic
+google-ai-generativelanguage==0.6.17
+langchain-google-genai==2.1.2
+google-generativeai==0.8.4
