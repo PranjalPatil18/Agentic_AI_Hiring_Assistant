@@ -33,19 +33,6 @@ def generate_checklist(context: str) -> str:
     response = llm.invoke([HumanMessage(content=prompt)])
     return response.content
 
-# @tool
-# def google_web_search(query: str) -> str:
-#     """Perform a real-time web search using Gemini's Grounding with Google Search."""
-#     client = genai.Client(api_key=GEMINI_KEY)
-#     response = client.models.generate_content(
-#         model='gemini-1.5-flash',
-#         contents=query,
-#         config=types.GenerateContentConfig(
-#             tools=[types.Tool(google_search=types.GoogleSearch())]
-#         )
-#     )
-#     return response.candidates[0].content.parts[0].text
-
 @tool
 def google_web_search(query: str) -> str:
     """
