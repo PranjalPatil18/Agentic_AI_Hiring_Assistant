@@ -34,7 +34,7 @@ The key features of the Agentic AI Hiring Assistant include:
 - **Automated Communications:** Create candidate outreach emails and draft offer letters using AI-driven text generation.
 - **Internet Research Integration:** Enhance outputs with real-time information gathered through integrated Google search.
 - **Interactive Dashboard:** Built with Streamlit for an intuitive, real-time user interface.
-- **Graph-based Workflow:** Utilize LangGraph and LangGraph Studio to visually manage and debug complex recruitment pipelines.
+- **Graph-based Workflow:** Utilized LangGraph and LangGraph Studio to visually manage and debug complex recruitment pipelines.
 - **Modular Language Model Chains:** Leverage LangChain (including langchain-community, langchain-core, langchain-openai, langchain-google-genai, etc.) to create modular and extendable AI workflows.
 
 ## Installation
@@ -62,7 +62,7 @@ To get started with AI Hiring Assistant, follow these steps:
 
 ## How To Run The Project
 
-While in the project directory, open terminal and run the command. This will run the files on local host in your default browser. <br>
+While in the project directory, open terminal and run the command. This will run the files on localhost in your default browser. <br>
 `streamlit run app.py`
 
 ## How To Use
@@ -93,17 +93,18 @@ Enjoy a streamlined, iterative process to create tailored recruitment documents 
 ### Tech Stack Used
 - **Python & Environment Management:**
   - **Python 3.12.8:** The core language for the project.
-  - **Dotenv:** For loading environment variables (e.g., `GEMINI_KEY`) ensuring secure API key management.
+  - **Dotenv:** For loading environment variables (e.g., `GEMINI_KEY`), ensuring secure API key management.
   
 - **LLM Integration:**
   - **Gemini API via Google Models:** Utilized for content generation (`gemini-1.5-flash`) to power job description generation and tool outputs.
   
 - **LangChain:**
-  - **ConversationChain:** Wraps the Gemini LLM along with a conversation memory (via `ConversationBufferMemory`), enabling context retention across user interactions.
+  - **LLM interactions and structure:** LangChain is used extensively to manage LLM interaction workflows, define and invoke structured tools, handle message formatting (e.g., Human/AI/System messages), and integrate with the Gemini model via 'langchain-google-genai'. Tool definitions use LangChain decorators, '@tool', and core messaging logic across nodes and tools is built on LangChain's message schema.
   
 - **LangGraph:**
   - **StateGraph:** Organizes the recruitment workflow into modular nodes (e.g., `initial_node`, `clarification_node`, `jd_generation_node`).  
   - **ToolNode:** Manages the dynamic invocation of tools (such as email drafting, checklist generation, and content editing) by binding them directly to the LLM.
+  - Wraps the Gemini LLM along with a conversation memory (via `MemorySaver`), enabling context retention across user interactions.
   
 - **Streamlit:**
   - Provides an interactive frontend interface for recruiters. It handles form submissions for role entry, clarification inputs, and follow-up tool commands.
