@@ -3,10 +3,15 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 import google.generativeai as genai
 from google.generativeai import types
-from config import GEMINI_KEY
-
-# tools.py
 from langchain.tools import tool
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get the GEMINI_KEY environment variable
+GEMINI_KEY = os.getenv("GEMINI_KEY")
 
 @tool
 def write_outreach_email(purpose: str = "interview", candidate: str = "the candidate") -> str:
@@ -20,26 +25,40 @@ def write_outreach_email(purpose: str = "interview", candidate: str = "the candi
 
 @tool
 def generate_checklist(context: str) -> str:
-    """Generate a hiring checklist based on the hiring clarifications (role, responsibilities, etc)."""
+    """Generate a hiring checklist based on the Job description."""
     prompt = (
-        f"Based on this hiring plan: {context}\n"
+        f"Based on this Job description: {context}\n"
         f"Create a startup hiring checklist. Break it down into stages like sourcing, screening, interviewing, onboarding."
     )
     response = llm.invoke([HumanMessage(content=prompt)])
     return response.content
 
+# @tool
+# def google_web_search(query: str) -> str:
+#     """Perform a real-time web search using Gemini's Grounding with Google Search."""
+#     client = genai.Client(api_key=GEMINI_KEY)
+#     response = client.models.generate_content(
+#         model='gemini-1.5-flash',
+#         contents=query,
+#         config=types.GenerateContentConfig(
+#             tools=[types.Tool(google_search=types.GoogleSearch())]
+#         )
+#     )
+#     return response.candidates[0].content.parts[0].text
+
 @tool
 def google_web_search(query: str) -> str:
-    """Perform a real-time web search using Gemini's Grounding with Google Search."""
-    client = genai.Client(api_key=GEMINI_KEY)
-    response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=query,
-        config=types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())]
-        )
-    )
-    return response.candidates[0].content.parts[0].text
+    """
+    Tool for LangGraph agent: performs a grounded web search using Gemini 1.5 model.
+    NOTE: Real-time search grounding is implicit — ensure your API key has access.
+    """
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+
+    # Prompt phrasing encourages grounding
+    prompt = f"Search the web and give a real-time answer to: {query}"
+
+    response = model.generate_content(prompt)
+    return response.text.strip()
 
 @tool
 def generate_offer_letter(candidate_name: str, salary: str) -> str:

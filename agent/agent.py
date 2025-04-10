@@ -2,52 +2,34 @@
 """
 Agentic AI Recruiting Assistant using LangGraph.
 This module builds the recruiting workflow as a cyclic graph.
-It dynamically extracts job roles from the recruiter’s input.
+It dynamically extracts job roles from the recruiter's input.
 """
-
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict, Annotated, List, Dict, Any
 import operator
 from langgraph.prebuilt import ToolNode
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
-
-from tools import write_outreach_email, generate_checklist, google_web_search, generate_offer_letter, edit_content
-from config import GEMINI_KEY
-
+from langgraph.checkpoint.memory import MemorySaver
+from agent.tools import write_outreach_email, generate_checklist, google_web_search, generate_offer_letter, edit_content
+from dotenv import load_dotenv
+import os
 from llm_config import llm
 
 # # Configure Gemini with your API key
-# genai.configure(api_key=GEMINI_KEY)  # <-- Replace with your actual API key
+load_dotenv()
+GEMINI_KEY = os.getenv("GEMINI_KEY")
 
-# # Initialize Gemini model
-# model = genai.GenerativeModel("gemini-1.5-flash")
-
-# # Wrapper to mimic LangChain's LLM interface
-# class GeminiWrapper:
-#     def invoke(self, messages):
-#         prompt = "\n".join([msg.content for msg in messages])
-#         response = model.generate_content(prompt)
-#         return AIMessage(content=response.text)
-
-
-# Add memory setup
-memory = ConversationBufferMemory(return_messages=True)
-
-# Wrap your Gemini LLM in a conversation chain
-conversation_chain = ConversationChain(
-    llm=llm,
-    memory=memory
-)
-
+memory = MemorySaver()
 
 # "recruiter_info" stores details like roles, budget, and timeline.
 class RecruiterState(TypedDict):
     messages: Annotated[List[BaseMessage], operator.add]
     recruiter_info: Dict[str, Any]
     clarification_questions: List[str]
+
+    wants_tool_chat: bool
+    done_with_tools: bool
 
 # -------------------------------
 # Node Functions
@@ -64,12 +46,26 @@ def initial_node(state: RecruiterState):
 
     # Otherwise, extract roles and generate questions
     prompt = (
+        f"You are a Hiring Assistant tasked with generating comprehensive job descriptions.\n"
         f"Extract job roles mentioned in this hiring request: '{state['messages'][-1].content}'. "
         f"Then, for each role, generate important follow-up questions to help create a job description."
+        f"To ensure accuracy, please begin by asking questions about these compulsory topics and make sure to adapt them to be dynamic to the role:\n"
+        f"Only give a bullet list of questions and nothing else"
+        f"- Essential skills required for this role.\n"
+        f"- Qualifications candidates need to have.\n"
+        f"- Years of experience are required.\n"
+        f"- What is the role level? (e.g., junior, mid-level, senior)\n"
+        f"- What is the location of the job?(remote, hybrid(address), on-site(address))"
+        f"- What is the budget or compensation range for this position?\n"
+        f"Once you have listed these mandatory questions, proceed to list additional, dynamic optional questions that are relevant to the specific role.\n"
+        f"These MAY include inquiries about:\n"
+        f"- Specific responsibilities, Required certifications, Company culture/values, etc.\n"
+        f"LIMIT the questions to maximum 10"
+        f"- Any other details that would help tailor the job description more precisely\n"
+        f"Make sure all compulsory questions are listed before moving on to the optional ones, and adjust follow-up questions based on the context of the role.\n"
         f"Output ONLY the questions in a bullet list format."
-        # f"Only maximum 3 questions no more that three most important questions, that is a rule."
     )
-    response_text = conversation_chain.predict(input=prompt)
+    response_text = llm.invoke([HumanMessage(content=prompt)]).content
     questions = [line.strip("-• ").strip() for line in response_text.strip().split("\n") if line.strip()]
     state["clarification_questions"] = questions
     return {
@@ -98,39 +94,21 @@ def jd_generation_node(state: RecruiterState):
         f"Generate a detailed job description for the role of {role} "
         f"based on the following clarifications:\n\n"
         f"{clarifications}\n\n"
-        f"Include responsibilities, Job location, qualifications, and benefits in markdown format."
+        f"Include required skills, responsibilities, Job location, and qualifications in markdown format."
+        f"You can fill in other information based on the {clarifications}, {role} and general assumptions. Do not ask in the description to fill details."
+        f"Avoid creating sections of which the user did not provide details."
     )
+
     # LOG: Print what you're sending to Gemini
-    print("📤 Prompt sent to LLM:\n", prompt)
+    # print("Prompt sent to LLM:\n", prompt)
     try:
-        jd_text = conversation_chain.predict(input=prompt)
-        #print("✅ LLM responded with:\n", jd_response.content)  # LOG: Show the JD
+        jd_text = llm.invoke([HumanMessage(content=prompt)]).content
+        #print("LLM responded with:\n", jd_response.content)  # LOG: Show the JD
         jd_msg = AIMessage(content=jd_text)
         return {"messages": [jd_msg]}
     except Exception as e:
-        #print("❌ LLM error during JD generation:", str(e))
+        #print(" LLM error during JD generation:", str(e))
         return {"messages": [AIMessage(content="Something went wrong generating the job description.")]}
-
-# def checklist_node(state: RecruiterState):
-#     """
-#     Generate a hiring checklist.
-#     """
-#     roles = state["recruiter_info"].get("clarifications", "")
-#     prompt = (
-#         f"Based on this hiring plan: {roles}\n"
-#         f"Create a startup hiring checklist: sourcing, screening, interviewing, onboarding."
-#     )
-#     checklist_text = conversation_chain.predict(input=prompt)
-#     return {"messages": [AIMessage(content=checklist_text)]}
-
-# def email_node(state: RecruiterState):
-#     """
-#     Draft an outreach email for potential candidates.
-#     """
-#     clar = state["recruiter_info"].get("clarifications", "")
-#     prompt = f"Draft a friendly outreach email to candidates based on the following job planning info:\n{clar}"
-#     email_text = conversation_chain.predict(input=prompt)
-#     return {"messages": [AIMessage(content=email_text)]}
 
 def final_node(state: RecruiterState):
     """
@@ -142,26 +120,20 @@ def final_node(state: RecruiterState):
             summary += msg.content + "\n\n"
     return {"messages": [AIMessage(content=summary)]}
 
-# -------------------------------
-# Conditional Functions
-# -------------------------------
+# agent.py  ──────────────────────────────────────────────
+def route_after_jd(state: RecruiterState) -> str:
+    """
+    After the JD is generated, jump to the tool chat only if the user
+    explicitly asked for it (wants_tool_chat == True).
+    """
+    return "tool_node" if state.get("wants_tool_chat", False) else "final"
 
-def branch_after_initial(state: RecruiterState) -> str:
-    """
-    If the initial node produced a clarifying question, branch to clarification.
-    Otherwise, proceed to job description generation.
-    """
-    return "clarification"
 
-def branch_after_jd(state: RecruiterState) -> str:
+def route_after_tool(state: RecruiterState) -> str:
     """
-    After JD generation, decide whether to generate a checklist or draft an email.
-    A simple heuristic is used.
+    Stay in the tool loop until the user says they're done.
     """
-    last_ai = state["messages"][-1].content.lower()
-    if "responsibilities" in last_ai:
-        return "checklist"
-    return "email"
+    return "final" if state.get("done_with_tools", False) else "tool_node"
 
 
 tool_node = ToolNode(tools=[write_outreach_email, generate_checklist, google_web_search, generate_offer_letter, edit_content])
@@ -175,38 +147,46 @@ builder1.add_node("initial", initial_node)
 
 builder1.add_edge(START, "initial")
 builder1.set_finish_point("initial")  # 👈 This is key
-graph = builder1.compile()
+graph = builder1.compile(checkpointer=memory)
 
 
 # -------------------------------
 # Build the Clarification Graph (Starts at 'clarification')
 # -------------------------------
 builder2 = StateGraph(RecruiterState)
-builder2.add_node("initial", initial_node)
+# builder2.add_node("initial", initial_node)
 builder2.add_node("clarification", clarification_node)
 builder2.add_node("jd", jd_generation_node)
-builder2.add_node("tool_chat", tool_node)
+builder2.add_node("tool_node", tool_node)
 builder2.add_node("final", final_node)
 
-builder2.add_edge(START, "clarification")  # <-- Start here instead
+builder2.add_edge(START, "clarification")  # Start here instead
 builder2.add_edge("clarification", "jd")
-builder2.add_edge("final", "tool_chat")
-builder2.add_edge("jd", "final")
-
+builder2.add_conditional_edges(
+    "jd",
+    route_after_jd,
+    path_map={"tool_node": "tool_node", "final": "final"},
+)
+builder2.add_conditional_edges(
+    "tool_node",
+    route_after_tool,
+    path_map={"tool_node": "tool_node", "final": "final"},
+)
 builder2.set_finish_point("final")
-clarification_graph = builder2.compile()
+clarification_graph = builder2.compile(checkpointer=memory)
 
 
 # Helper to start from beginning
-def run_role_to_questions(user_input: str):
+def run_role_to_questions(user_input: str, thread_id: str):
     state = {
         "messages": [HumanMessage(content=user_input)],
         "recruiter_info": {},
         "clarification_questions": []
     }
-    return graph.invoke(state)
+    config = {"configurable": {"thread_id": thread_id}}
+    return graph.invoke(state, config=config)
 
-def run_from_clarification(clarification_response: str, role: str):
+def run_from_clarification(clarification_response: str, role: str, thread_id: str):
     state = {
         "messages": [HumanMessage(content=clarification_response)],
         "recruiter_info": {
@@ -215,7 +195,8 @@ def run_from_clarification(clarification_response: str, role: str):
         },
         "clarification_questions": []
     }
-    return clarification_graph.invoke(state)
+    config = {"configurable": {"thread_id": thread_id}}
+    return clarification_graph.invoke(state, config=config)
 
 
 
